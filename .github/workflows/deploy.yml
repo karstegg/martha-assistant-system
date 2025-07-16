@@ -1,0 +1,63 @@
+name: Deploy to Production
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build for production
+      run: npm run build
+      env:
+        REACT_APP_ENVIRONMENT: ${{ github.event.inputs.environment || 'production' }}
+        REACT_APP_CLAUDE_API_ENABLED: true
+        REACT_APP_DEBUG_MODE: false
+        
+    - name: Deploy to GitHub Pages
+      if: github.event.inputs.environment == 'production' || github.event_name == 'release'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./build
+        cname: martha-assistant.example.com
+        
+    - name: Deploy to Staging
+      if: github.event.inputs.environment == 'staging'
+      run: |
+        echo "Deploying to staging environment"
+        # Add staging deployment logic here
+        
+    - name: Notify Slack
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        text: 'Martha deployment to ${{ github.event.inputs.environment || "production" }} ${{ job.status }}'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
